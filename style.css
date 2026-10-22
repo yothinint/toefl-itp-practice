@@ -269,8 +269,8 @@ details.box summary { cursor: pointer; font-weight: 600; }
 .tbl td.en { white-space: normal; }
 .callout { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; margin: 12px 0; font-size: 15px; }
 .callout.ok { background: var(--ok-soft); }
-.gram { display: grid; gap: 12px; }
-.g { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.gram { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.g { min-width: 0; overflow-wrap: anywhere; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .g h4 { font-size: 16px; margin-bottom: 4px; }
 .g p.en { font-size: 16px; }
 .g .tip { color: var(--ink-2); font-size: 15px; border-left: 3px solid var(--accent); padding-left: 10px; }
