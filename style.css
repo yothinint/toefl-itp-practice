@@ -246,6 +246,36 @@ details.box summary { cursor: pointer; font-weight: 600; }
 .play { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 2px 12px; font-size: 13px; font-weight: 600; color: var(--accent); }
 .play.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
+/* ---------- study guide ---------- */
+.guide-cta { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; margin-top: 20px; border-color: var(--accent); background: var(--accent-soft); }
+.guide-cta:hover { filter: brightness(1.03); }
+.gc-icon { font-size: 30px; }
+.gc-go { margin-left: auto; font-weight: 700; color: var(--accent); white-space: nowrap; }
+@media (max-width: 560px) { .gc-go { display: none; } }
+.toc { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.toc::-webkit-scrollbar { display: none; }
+.pal.toc button.tab { flex: 0 0 auto; white-space: nowrap; width: auto; height: auto; padding: 6px 14px; font-size: 14px; }
+.guide { max-width: 920px; margin: 0 auto; padding: 22px 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.g-sec { scroll-margin-top: 120px; min-width: 0; }
+.g-sec > h2 { font-size: 24px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.g-sec h3 { font-size: 17px; margin: 20px 0 8px; color: var(--accent); }
+.g-sec p { margin: 8px 0; }
+.g-sec ul, .g-sec ol { padding-left: 22px; margin: 8px 0; }
+.g-sec li { margin: 6px 0; }
+.tbl { overflow-x: auto; margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; }
+.tbl table { font-size: 15px; }
+.tbl th { background: var(--surface-2); }
+.tbl td.ex { color: var(--ink-2); font-size: 14.5px; }
+.tbl td.en { white-space: normal; }
+.callout { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; margin: 12px 0; font-size: 15px; }
+.callout.ok { background: var(--ok-soft); }
+.gram { display: grid; gap: 12px; }
+.g { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.g h4 { font-size: 16px; margin-bottom: 4px; }
+.g p.en { font-size: 16px; }
+.g .tip { color: var(--ink-2); font-size: 15px; border-left: 3px solid var(--accent); padding-left: 10px; }
+.g u { text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
 /* ---------- overlay / modal / toast ---------- */
 .overlay { position: fixed; inset: 0; background: rgb(10 12 16 / 55%); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .overlay .card { max-width: 420px; text-align: center; }
@@ -262,4 +292,11 @@ details.box summary { cursor: pointer; font-weight: 600; }
 @media print {
   .bar, .filters, .actions, .play { display: none !important; }
   body { background: #fff; }
+}
+@media (max-width: 560px) {
+  .tbl.vocab thead { display: none; }
+  .tbl.vocab tr { display: block; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .tbl.vocab tr:last-child { border-bottom: 0; }
+  .tbl.vocab td { display: block; border: 0; padding: 1px 0; }
+  .tbl.vocab td.ex:empty { display: none; }
 }

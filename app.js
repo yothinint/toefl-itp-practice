@@ -69,9 +69,11 @@
 
   // ---------- render dispatcher ----------
   let tick = null;
+  let showHome = false; // user navigated to the home page while an attempt exists
   function render() {
     clearInterval(tick); tick = null;
-    if (!S) return renderHome();
+    if (location.hash === '#guide') return renderGuide();
+    if (!S || showHome) return renderHome();
     if (S.phase === 'intro') return renderIntro();
     if (S.phase === 'run') return S.sec === 0 ? renderListening() : renderTimed();
     if (S.phase === 'results') return renderResults();
@@ -92,6 +94,11 @@
         <h1>ข้อสอบจำลอง TOEFL ITP</h1>
         <p>ทำครบ 3 ส่วนตามลำดับแบบสอบจริง Listening มีเสียงเล่นต่อเนื่องและฟังได้ครั้งเดียว ส่วน Structure กับ Reading จับเวลาตามสัดส่วนข้อสอบจริง เมื่อทำเสร็จจะเห็นคะแนนพร้อมเฉลยละเอียดทุกข้อ</p>
       </header>
+      <button class="card guide-cta" data-act="guide">
+        <span class="gc-icon">📘</span>
+        <span><b>คู่มือเตรียมสอบ (ภาษาไทย)</b><br><span class="muted">เคล็ดลับแต่ละ Section · สำนวนที่ออกบ่อย · ไวยากรณ์ที่ต้องรู้ · ประเภทคำถาม Reading · คำศัพท์ อ่านได้เลยไม่ต้องรอสอบ</span></span>
+        <span class="gc-go">อ่านเลย →</span>
+      </button>
       <section class="card overview">
         <table><thead><tr><th>Section</th><th>จำนวน</th><th>เวลา</th></tr></thead><tbody>${rows}</tbody></table>
       </section>
@@ -134,6 +141,7 @@
       <div class="actions">
         <button class="btn primary" data-act="begin">เริ่ม Section ${i + 1}</button>
         ${i === 0 ? '<button class="btn ghost" data-act="soundcheck">🔊 ทดสอบเสียง</button>' : ''}
+        <button class="btn ghost" data-act="guide" data-id="${['listening-tips', 'structure-tips', 'reading-tips'][i]}">📘 เคล็ดลับ Section นี้</button>
         <button class="btn ghost" data-act="home">หน้าแรก</button>
       </div>
     </div></div>`;
@@ -357,6 +365,32 @@
     }).join('')}</div>`;
   }
 
+  // ---------- study guide ----------
+  function renderGuide(focus) {
+    const G = window.GUIDE || [];
+    app.innerHTML = `<div class="bar"><div class="bar-in">
+        <button class="btn small ghost" data-act="guide-back">← กลับ</button>
+        <div class="title"><small>TOEFL ITP</small><b>คู่มือเตรียมสอบ</b></div>
+      </div>
+      <nav class="pal toc" aria-label="สารบัญ">${G.map((g) => `<button class="tab" data-act="gscroll" data-id="${g.id}">${esc(g.title)}</button>`).join('')}</nav></div>
+      <div class="guide">${G.map((g) => `<section class="card g-sec" id="g-${g.id}"><h2>${esc(g.title)}</h2>${g.body}</section>`).join('')}
+        <div class="actions" style="justify-content:center"><button class="btn primary" data-act="guide-back">← กลับไปหน้าข้อสอบ</button></div>
+        <p class="foot">ส่วน "เคล็ดลับจากเอกสาร" และประเภทคำถาม Reading แปลจาก ${esc(E.source)} · ส่วนอื่นเป็นเนื้อหาเสริม</p></div>`;
+    const el = focus && document.getElementById(`g-${focus}`);
+    if (el) el.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
+  }
+  function openGuide(id) {
+    if (audio && !(S && S.phase === 'run' && S.sec === 0)) { segEnd = null; audio.pause(); }
+    history.pushState({ guide: 1 }, '', '#guide');
+    renderGuide(id);
+  }
+  function closeGuide() {
+    if (history.state && history.state.guide) history.back();
+    else { history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); }
+  }
+  window.addEventListener('popstate', () => render());
+  window.addEventListener('hashchange', () => render());
+
   // ---------- flow ----------
   function finishSection() {
     const i = S.sec;
@@ -398,6 +432,7 @@
           <span style="font-size:13px">ประมาณจากสัดส่วนข้อที่ถูกเท่านั้น เพราะชุดนี้มี ${totalQ} ข้อ ส่วนข้อสอบจริงมี 140 ข้อ</span></p></div>
           <div class="actions" style="margin:0;flex-direction:column">
             <button class="btn primary" data-act="restart">ทำใหม่อีกครั้ง</button>
+            <button class="btn ghost" data-act="guide">📘 คู่มือเตรียมสอบ</button>
             <button class="btn ghost" data-act="home">หน้าแรก</button></div></div>
         <div class="secs">${cards}</div>
       </section>
@@ -487,17 +522,19 @@
     const act = el.dataset.act;
     const card = el.closest('.q');
     switch (act) {
-      case 'start': S = fresh(); save(); render(); break;
-      case 'resume': render(); break;
-      case 'show-results': render(); break;
-      case 'home': if (audio) { segEnd = null; audio.pause(); } renderHome(); window.scrollTo(0, 0); break;
+      case 'start': showHome = false; S = fresh(); save(); render(); break;
+      case 'resume': case 'show-results': showHome = false; render(); break;
+      case 'home': if (audio) { segEnd = null; audio.pause(); } showHome = true; render(); window.scrollTo(0, 0); break;
       case 'restart':
         if (await ask('เริ่มทำใหม่ทั้งหมด?', 'คำตอบที่ทำค้างไว้จะถูกล้าง (ประวัติคะแนนยังอยู่)', 'เริ่มใหม่')) {
           if (audio) { segEnd = null; audio.pause(); }
-          S = fresh(); save(); render(); window.scrollTo(0, 0);
+          showHome = false; S = fresh(); save(); render(); window.scrollTo(0, 0);
         }
         break;
       case 'begin': begin(); break;
+      case 'guide': openGuide(el.dataset.id); break;
+      case 'guide-back': closeGuide(); break;
+      case 'gscroll': document.getElementById(`g-${el.dataset.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       case 'soundcheck': new Audio(E.soundCheck).play().catch(() => toast('เล่นเสียงไม่ได้')); break;
       case 'ans':
         if (card && S.phase === 'run') setAnswer(Number(card.dataset.sec), Number(card.dataset.i), el.dataset.opt);
