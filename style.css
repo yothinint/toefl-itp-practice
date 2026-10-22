@@ -77,6 +77,9 @@ tr:last-child td { border-bottom: 0; }
 .hist-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 15px; }
 .hist-row:last-child { border-bottom: 0; }
 
+/* ---------- home: paused attempt ---------- */
+.paused-note { width: 100%; margin: 0; color: var(--warn); font-weight: 600; }
+
 /* ---------- intro ---------- */
 .intro { max-width: 680px; margin: 6vh auto 0; }
 .intro .secno { font-family: var(--serif); font-size: 15px; color: var(--accent); font-weight: 600; }

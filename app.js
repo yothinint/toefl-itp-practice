@@ -69,12 +69,17 @@
 
   // ---------- render dispatcher ----------
   let tick = null;
-  let showHome = false; // user navigated to the home page while an attempt exists
+  // Opening the site mid-section lands on the home page instead of continuing on its own.
+  let showHome = !!(S && S.phase === 'run');
+  let resumeByClick = false; // the next listening render comes from a click, so audio may start
   function render() {
     clearInterval(tick); tick = null;
     if (location.hash === '#guide') return renderGuide();
     if (!S || showHome) return renderHome();
     if (S.phase === 'intro') return renderIntro();
+    if (S.phase === 'run' && S.sec > 0 && S.remaining != null) {
+      S.deadline = Date.now() + S.remaining; S.remaining = null; save();
+    }
     if (S.phase === 'run') return S.sec === 0 ? renderListening() : renderTimed();
     if (S.phase === 'results') return renderResults();
     return renderHome();
@@ -108,9 +113,12 @@
           <li>ทำทีละ Section ตามลำดับ เมื่อส่งหรือหมดเวลาแล้วย้อนกลับไปแก้ส่วนก่อนหน้าไม่ได้</li>
           <li>Listening เล่นเสียงต่อเนื่องจนจบ <b>หยุด ย้อน หรือฟังซ้ำไม่ได้</b> หลังคำถามแต่ละข้อมีเวลาตอบประมาณ 12 วินาที ใส่หูฟังจะได้ยินชัดที่สุด</li>
           <li>Structure และ Reading ข้ามข้อ ย้อนข้อ และปักธงข้อที่ยังไม่แน่ใจได้ ระบบส่งคำตอบให้อัตโนมัติเมื่อหมดเวลา</li>
+          <li>ต้องการพักระหว่างทำ กดปุ่ม <b>⌂ หน้าแรก</b> ระบบจะหยุดเสียงและเวลาไว้ แล้วกด "ทำต่อ" เพื่อทำต่อจากจุดเดิม</li>
           <li>คำตอบบันทึกในเครื่องนี้ ถ้าเผลอปิดหน้าเว็บก็กลับมาทำต่อได้</li>
         </ul>
         <div class="actions">
+          ${inProgress && S.phase === 'run' ? `<p class="paused-note">⏸ หยุดไว้ที่ Section ${S.sec + 1} · ${S.sec === 0
+            ? `เสียงนาทีที่ ${fmt(S.audioPos)}` : `เหลือเวลา ${fmt((S.remaining != null ? S.remaining : S.deadline - Date.now()) / 1000)}`}</p>` : ''}
           ${inProgress ? `<button class="btn primary" data-act="resume">ทำต่อ (Section ${S.sec + 1})</button>
             <button class="btn ghost danger" data-act="restart">เริ่มใหม่ทั้งหมด</button>`
             : `<button class="btn primary" data-act="start">เริ่มทำข้อสอบ</button>`}
@@ -201,7 +209,7 @@
     audio.addEventListener('waiting', () => setListenNote('กำลังโหลดเสียง…'));
     audio.addEventListener('playing', () => { setListenNote(''); hideOverlay(); });
     audio.addEventListener('pause', () => {
-      if (S && S.phase === 'run' && S.sec === 0 && !audio.ended) showOverlay('เสียงหยุดเล่น', 'กดปุ่มด้านล่างเพื่อเล่นต่อจากจุดเดิม', 'เล่นต่อ');
+      if (S && S.phase === 'run' && S.sec === 0 && !audio.ended && !showHome && location.hash !== '#guide') showOverlay('เสียงหยุดเล่น', 'กดปุ่มด้านล่างเพื่อเล่นต่อจากจุดเดิม', 'เล่นต่อ');
       document.querySelectorAll('.play.on').forEach((b) => b.classList.remove('on'));
     });
     audio.addEventListener('error', () => {
@@ -220,9 +228,11 @@
     hideOverlay();
     const o = document.createElement('div');
     o.className = 'overlay'; o.id = 'overlay';
-    o.innerHTML = `<div class="card"><h3>${esc(title)}</h3><p class="muted">${esc(body)}</p><button class="btn primary" data-act="resume-audio">▶ ${esc(btn)}</button></div>`;
+    o.innerHTML = `<div class="card"><h3>${esc(title)}</h3><p class="muted">${esc(body)}</p><div class="actions" style="justify-content:center">
+      <button class="btn primary" data-o="play">▶ ${esc(btn)}</button><button class="btn ghost" data-o="home">⌂ หน้าแรก</button></div></div>`;
     document.body.appendChild(o);
-    o.querySelector('button').addEventListener('click', () => { hideOverlay(); playListening(Math.max(0, S.audioPos - 2)); });
+    o.querySelector('[data-o="play"]').addEventListener('click', () => { hideOverlay(); playListening(Math.max(0, S.audioPos - 2)); });
+    o.querySelector('[data-o="home"]').addEventListener('click', () => { hideOverlay(); goHome(); });
   }
   function hideOverlay() { const o = document.getElementById('overlay'); if (o) o.remove(); }
   function setListenNote(t) { const n = document.getElementById('lnote'); if (n) n.textContent = t; }
@@ -241,12 +251,16 @@
           <div class="txt" id="lstat">พร้อมเริ่ม<small id="lnote"></small></div>
           <span class="countdown" id="lcount" hidden></span></div>
         <span class="prog-time" id="ltime">0:00 / ${fmt(CUES.duration)}</span>
+        <button class="btn small ghost" data-act="exit">⌂ หน้าแรก</button>
       </div><div class="prog"><i id="lprog"></i></div></div>
       <div class="booklet" id="booklet"></div>`;
     updateBooklet(S.audioPos);
     const a = getAudio();
+    const byClick = resumeByClick;
+    resumeByClick = false;
     if (a.paused) {
-      if (S.audioPos > 1) showOverlay('ทำ Listening ต่อ', `เสียงจะเล่นต่อจากนาทีที่ ${fmt(S.audioPos)}`, 'เล่นต่อ');
+      if (byClick) playListening(Math.max(0, S.audioPos - 2));
+      else if (S.audioPos > 1) showOverlay('ทำ Listening ต่อ', `เสียงจะเล่นต่อจากนาทีที่ ${fmt(S.audioPos)}`, 'เล่นต่อ');
       else playListening(0);
     }
   }
@@ -276,7 +290,7 @@
       if (a.currentTime >= segEnd) { segEnd = null; a.pause(); }
       return;
     }
-    if (!S || S.phase !== 'run' || S.sec !== 0) return;
+    if (!S || S.phase !== 'run' || S.sec !== 0 || !document.getElementById('lstat')) return;
     const t = a.currentTime;
     S.audioPos = t;
     if (Date.now() - lastSave > 2000) { lastSave = Date.now(); save(); }
@@ -344,6 +358,7 @@
     app.innerHTML = `<div class="bar"><div class="bar-in">
         <div class="title"><small>Section ${i + 1} of 3</small><b>${esc(s.sec.name)}</b></div>
         <span class="timer" id="timer">--:--</span>
+        <button class="btn small ghost" data-act="exit">⌂ หน้าแรก</button>
         <button class="btn small primary" data-act="submit">ส่ง Section ${i + 1}</button>
       </div>${palette(i)}</div>${body}`;
     const update = () => {
@@ -390,6 +405,23 @@
   }
   window.addEventListener('popstate', () => render());
   window.addEventListener('hashchange', () => render());
+
+  function goHome() {
+    if (S && S.phase === 'run') {
+      if (S.sec === 0 && audio) S.audioPos = audio.currentTime || S.audioPos;
+      else if (S.sec > 0 && S.remaining == null) S.remaining = Math.max(0, S.deadline - Date.now());
+      save();
+    }
+    showHome = true;
+    if (audio) { segEnd = null; audio.pause(); }
+    hideOverlay();
+    if (location.hash === '#guide') history.replaceState(null, '', location.pathname + location.search);
+    render(); window.scrollTo(0, 0);
+  }
+  // Closing the tab mid-section stops the clock too.
+  window.addEventListener('pagehide', () => {
+    if (S && S.phase === 'run' && S.sec > 0 && S.remaining == null) { S.remaining = Math.max(0, S.deadline - Date.now()); save(); }
+  });
 
   // ---------- flow ----------
   function finishSection() {
@@ -523,8 +555,13 @@
     const card = el.closest('.q');
     switch (act) {
       case 'start': showHome = false; S = fresh(); save(); render(); break;
-      case 'resume': case 'show-results': showHome = false; render(); break;
-      case 'home': if (audio) { segEnd = null; audio.pause(); } showHome = true; render(); window.scrollTo(0, 0); break;
+      case 'resume': case 'show-results': showHome = false; resumeByClick = true; render(); window.scrollTo(0, 0); break;
+      case 'home': goHome(); break;
+      case 'exit':
+        if (await ask('กลับหน้าแรก?', S.sec === 0
+          ? 'เสียงจะหยุดไว้ตรงนี้ กด "ทำต่อ" ที่หน้าแรกเพื่อฟังต่อจากจุดเดิม'
+          : 'เวลาจะหยุดไว้ คำตอบที่ทำแล้วยังอยู่ กด "ทำต่อ" ที่หน้าแรกเพื่อทำต่อ', 'กลับหน้าแรก')) goHome();
+        break;
       case 'restart':
         if (await ask('เริ่มทำใหม่ทั้งหมด?', 'คำตอบที่ทำค้างไว้จะถูกล้าง (ประวัติคะแนนยังอยู่)', 'เริ่มใหม่')) {
           if (audio) { segEnd = null; audio.pause(); }
