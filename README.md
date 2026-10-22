@@ -25,6 +25,10 @@ python3 tools/build.py
 สคริปต์ใช้คำสั่ง `say` ของ macOS สร้างเสียงจาก audio script (Narrator = Daniel, Woman = Samantha, Man = Reed)
 แล้วใช้ `afconvert` แปลงเป็น `audio/section1.m4a` จากนั้นสร้าง `data.js` พร้อมเวลาของแต่ละข้อ
 
+## อัปเดตเว็บ
+
+หลังแก้ไฟล์ ให้เพิ่มเลข `?v=` ใน `index.html` (ทุกไฟล์ CSS/JS) เพื่อให้เบราว์เซอร์โหลดไฟล์ใหม่แทนไฟล์ที่แคชไว้
+
 ## หมายเหตุ
 
 - เฉลย Reading มาจาก Answer Key ในเอกสาร ส่วนเฉลย Listening และ Structure เรียบเรียงจาก audio script และหลักไวยากรณ์

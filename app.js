@@ -30,6 +30,21 @@
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (sec) => { sec = Math.max(0, Math.round(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+  // ---------- theme ----------
+  const TKEY = 'toefl-itp-cmmu:theme';
+  const isDark = () => {
+    const t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  };
+  const themeBtn = () => `<button class="btn small ghost theme-btn" data-act="theme" title="สลับธีมสว่าง / มืด">${isDark()
+    ? '☀️<span class="blabel"> โหมดสว่าง</span>' : '🌙<span class="blabel"> โหมดมืด</span>'}</button>`;
+  function toggleTheme() {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    store.set(TKEY, next);
+    // Swap labels in place so a running section (audio, timer) is not re-rendered.
+    document.querySelectorAll('.theme-btn').forEach((b) => { b.outerHTML = themeBtn(); });
+  }
   const minutesOf = (i) => (i === 0 ? Math.round(CUES.duration / 60) : E.sections[i].minutes);
 
   // ---------- modal / toast ----------
@@ -95,7 +110,7 @@
       <td class="num">${i === 0 ? `~${minutesOf(0)} นาที<br><span class="muted">ตามเสียง</span>` : `${minutesOf(i)} นาที`}</td></tr>`).join('');
     app.innerHTML = `<div class="wrap">
       <header class="hero">
-        <div class="eyebrow">TOEFL ITP · Practice Test</div>
+        <div class="topline"><div class="eyebrow">TOEFL ITP · Practice Test</div>${themeBtn()}</div>
         <h1>ข้อสอบจำลอง TOEFL ITP</h1>
         <p>ทำครบ 3 ส่วนตามลำดับแบบสอบจริง Listening มีเสียงเล่นต่อเนื่องและฟังได้ครั้งเดียว ส่วน Structure กับ Reading จับเวลาตามสัดส่วนข้อสอบจริง เมื่อทำเสร็จจะเห็นคะแนนพร้อมเฉลยละเอียดทุกข้อ</p>
       </header>
@@ -150,7 +165,8 @@
         <button class="btn primary" data-act="begin">เริ่ม Section ${i + 1}</button>
         ${i === 0 ? '<button class="btn ghost" data-act="soundcheck">🔊 ทดสอบเสียง</button>' : ''}
         <button class="btn ghost" data-act="guide" data-id="${['listening-tips', 'structure-tips', 'reading-tips'][i]}">📘 เคล็ดลับ Section นี้</button>
-        <button class="btn ghost" data-act="home">หน้าแรก</button>
+        <button class="btn ghost" data-act="home">⌂ หน้าแรก</button>
+        ${themeBtn()}
       </div>
     </div></div>`;
   }
@@ -251,7 +267,8 @@
           <div class="txt" id="lstat">พร้อมเริ่ม<small id="lnote"></small></div>
           <span class="countdown" id="lcount" hidden></span></div>
         <span class="prog-time" id="ltime">0:00 / ${fmt(CUES.duration)}</span>
-        <button class="btn small ghost" data-act="exit">⌂ หน้าแรก</button>
+        <button class="btn small ghost" data-act="exit">⌂<span class="blabel"> หน้าแรก</span></button>
+        ${themeBtn()}
       </div><div class="prog"><i id="lprog"></i></div></div>
       <div class="booklet" id="booklet"></div>`;
     updateBooklet(S.audioPos);
@@ -358,7 +375,8 @@
     app.innerHTML = `<div class="bar"><div class="bar-in">
         <div class="title"><small>Section ${i + 1} of 3</small><b>${esc(s.sec.name)}</b></div>
         <span class="timer" id="timer">--:--</span>
-        <button class="btn small ghost" data-act="exit">⌂ หน้าแรก</button>
+        <button class="btn small ghost" data-act="exit">⌂<span class="blabel"> หน้าแรก</span></button>
+        ${themeBtn()}
         <button class="btn small primary" data-act="submit">ส่ง Section ${i + 1}</button>
       </div>${palette(i)}</div>${body}`;
     const update = () => {
@@ -386,6 +404,8 @@
     app.innerHTML = `<div class="bar"><div class="bar-in">
         <button class="btn small ghost" data-act="guide-back">← กลับ</button>
         <div class="title"><small>TOEFL ITP</small><b>คู่มือเตรียมสอบ</b></div>
+        <button class="btn small ghost" data-act="home">⌂<span class="blabel"> หน้าแรก</span></button>
+        ${themeBtn()}
       </div>
       <nav class="pal toc" aria-label="สารบัญ">${G.map((g) => `<button class="tab" data-act="gscroll" data-id="${g.id}">${esc(g.title)}</button>`).join('')}</nav></div>
       <div class="guide">${G.map((g) => `<section class="card g-sec" id="g-${g.id}"><h2>${esc(g.title)}</h2>${g.body}</section>`).join('')}
@@ -465,7 +485,8 @@
           <div class="actions" style="margin:0;flex-direction:column">
             <button class="btn primary" data-act="restart">ทำใหม่อีกครั้ง</button>
             <button class="btn ghost" data-act="guide">📘 คู่มือเตรียมสอบ</button>
-            <button class="btn ghost" data-act="home">หน้าแรก</button></div></div>
+            <button class="btn ghost" data-act="home">⌂ หน้าแรก</button>
+            ${themeBtn()}</div></div>
         <div class="secs">${cards}</div>
       </section>
       <div class="filters">
@@ -569,6 +590,7 @@
         }
         break;
       case 'begin': begin(); break;
+      case 'theme': toggleTheme(); break;
       case 'guide': openGuide(el.dataset.id); break;
       case 'guide-back': closeGuide(); break;
       case 'gscroll': document.getElementById(`g-${el.dataset.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;

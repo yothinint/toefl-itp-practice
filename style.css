@@ -255,7 +255,7 @@ details.box summary { cursor: pointer; font-weight: 600; }
 .gc-icon { font-size: 30px; }
 .gc-go { margin-left: auto; font-weight: 700; color: var(--accent); white-space: nowrap; }
 @media (max-width: 560px) { .gc-go { display: none; } }
-.toc { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.toc { flex-wrap: wrap; }
 .toc::-webkit-scrollbar { display: none; }
 .pal.toc button.tab { flex: 0 0 auto; white-space: nowrap; width: auto; height: auto; padding: 6px 14px; font-size: 14px; }
 .guide { max-width: 920px; margin: 0 auto; padding: 22px 16px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
@@ -302,4 +302,13 @@ details.box summary { cursor: pointer; font-weight: 600; }
   .tbl.vocab tr:last-child { border-bottom: 0; }
   .tbl.vocab td { display: block; border: 0; padding: 1px 0; }
   .tbl.vocab td.ex:empty { display: none; }
+}
+
+/* ---------- theme toggle / compact header buttons ---------- */
+.topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.theme-btn { white-space: nowrap; }
+@media (max-width: 720px) {
+  .bar .blabel { display: none; }
+  .toc { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .toc::-webkit-scrollbar { display: none; }
 }
