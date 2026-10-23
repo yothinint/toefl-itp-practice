@@ -1,8 +1,11 @@
 (() => {
   'use strict';
   const E = window.EXAM;
-  const KEY = 'toefl-itp-cmmu:state:v1';
+  const A = window.ANALYSIS;
+  const KEY = 'toefl-itp-cmmu:state:v1';         // full mock exam
+  const PKEY = 'toefl-itp-cmmu:practice:v1';     // single-part practice
   const HKEY = 'toefl-itp-cmmu:history:v1';
+  const PHKEY = 'toefl-itp-cmmu:part-history:v1';
   const LETTERS = ['A', 'B', 'C', 'D'];
   // Rough linear conversion to the ITP scale (section ranges from the official score report).
   const RANGES = [[31, 68], [31, 68], [31, 67]];
@@ -16,6 +19,27 @@
   });
   const LISTEN_PARTS = E.sections[0].parts;
   const CUES = E.cues;
+  const tagOf = (si, j) => A.tags[A.map[E.sections[si].id][j]];
+
+  // Every part that can be practised on its own.
+  const PART_TITLES = { 'reading-0': 'Passage 1: ชนพื้นเมืองอเมริกัน', 'reading-1': 'Passage 2: ความเค็มของน้ำทะเล' };
+  const PARTS = [];
+  E.sections.forEach((sec, si) => sec.parts.forEach((part, pi) => {
+    const idx = SECS[si].items.map((it, j) => (it.part === part ? j : -1)).filter((j) => j >= 0);
+    PARTS.push({ key: `${si}-${pi}`, si, pi, part, idx,
+      title: PART_TITLES[`${sec.id}-${pi}`] || part.name,
+      range: `ข้อ ${SECS[si].items[idx[0]].n}–${SECS[si].items[idx[idx.length - 1]].n}`,
+      minutes: si === 0 ? 0 : Math.round((sec.minutes * idx.length / SECS[si].items.length) * 2) / 2 });
+  }));
+  const partOf = (si, pi) => PARTS.find((p) => p.si === si && p.pi === pi);
+  function listenRange(st = S) {
+    if (st && st.mode === 'part') {
+      const k = LISTEN_PARTS.findIndex((p) => p.id === LISTEN_PARTS[st.pi].id);
+      const next = LISTEN_PARTS[k + 1];
+      return { start: CUES.parts[LISTEN_PARTS[k].id], end: next ? CUES.parts[next.id] : CUES.outro };
+    }
+    return { start: 0, end: CUES.duration };
+  }
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -23,10 +47,16 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } },
   };
 
+  // S is the attempt on screen: the mock exam (KEY) or a single-part practice (PKEY, mode 'part').
   let S = store.get(KEY, null);
-  const fresh = () => ({ phase: 'intro', sec: 0, answers: [[], [], []], flags: [[], [], []], deadline: 0,
+  const fresh = () => ({ mode: 'exam', phase: 'intro', sec: 0, answers: [[], [], []], flags: [[], [], []], deadline: 0,
     audioPos: 0, used: [0, 0, 0], secStart: 0, startedAt: Date.now(), tab: 0 });
-  const save = () => { if (S) store.set(KEY, S); };
+  const isPart = () => !!(S && S.mode === 'part');
+  const save = () => { if (S) store.set(isPart() ? PKEY : KEY, S); };
+  const examState = () => (S && !isPart() ? S : store.get(KEY, null));
+  const practiceState = () => (isPart() ? S : store.get(PKEY, null));
+  // Questions of the current section that belong to this attempt.
+  const inScope = (j) => !isPart() || SECS[S.sec].items[j].part === SECS[S.sec].sec.parts[S.pi];
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (sec) => { sec = Math.max(0, Math.round(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
@@ -84,26 +114,31 @@
 
   // ---------- render dispatcher ----------
   let tick = null;
-  // Opening the site mid-section lands on the home page instead of continuing on its own.
-  let showHome = !!(S && S.phase === 'run');
+  // Opening the site always lands on the home page; nothing continues on its own.
+  let showHome = true;
   let resumeByClick = false; // the next listening render comes from a click, so audio may start
   function render() {
     clearInterval(tick); tick = null;
     if (location.hash === '#guide') return renderGuide();
+    if (location.hash === '#practice') return renderPractice();
     if (!S || showHome) return renderHome();
     if (S.phase === 'intro') return renderIntro();
     if (S.phase === 'run' && S.sec > 0 && S.remaining != null) {
       S.deadline = Date.now() + S.remaining; S.remaining = null; save();
     }
     if (S.phase === 'run') return S.sec === 0 ? renderListening() : renderTimed();
-    if (S.phase === 'results') return renderResults();
+    if (S.phase === 'results') return isPart() ? renderPartResults() : renderResults();
     return renderHome();
   }
+  const clearHash = () => { if (location.hash) history.replaceState(null, '', location.pathname + location.search); };
 
   // ---------- home ----------
   function renderHome() {
     const hist = store.get(HKEY, []);
-    const inProgress = S && (S.phase === 'intro' || S.phase === 'run');
+    const EX = examState();
+    const PR = practiceState();
+    const inProgress = EX && (EX.phase === 'intro' || EX.phase === 'run');
+    const prRun = PR && PR.phase === 'run' ? partOf(PR.sec, PR.pi) : null;
     const rows = SECS.map((s, i) => `<tr>
       <td><b class="en">${i + 1}. ${esc(s.sec.name)}</b><br><span class="muted">${s.sec.parts.map((p) => esc(p.name)).join(' · ')}</span></td>
       <td class="num">${s.items.length} ข้อ</td>
@@ -112,35 +147,43 @@
       <header class="hero">
         <div class="topline"><div class="eyebrow">TOEFL ITP · Practice Test</div>${themeBtn()}</div>
         <h1>ข้อสอบจำลอง TOEFL ITP</h1>
-        <p>ทำครบ 3 ส่วนตามลำดับแบบสอบจริง Listening มีเสียงเล่นต่อเนื่องและฟังได้ครั้งเดียว ส่วน Structure กับ Reading จับเวลาตามสัดส่วนข้อสอบจริง เมื่อทำเสร็จจะเห็นคะแนนพร้อมเฉลยละเอียดทุกข้อ</p>
+        <p>ทำครบ 3 ส่วนตามลำดับแบบสอบจริง หรือเลือกฝึกทีละ Part แล้วดูเฉลยพร้อมวิเคราะห์จุดอ่อนทันที</p>
       </header>
-      <button class="card guide-cta" data-act="guide">
-        <span class="gc-icon">📘</span>
-        <span><b>คู่มือเตรียมสอบ (ภาษาไทย)</b><br><span class="muted">เคล็ดลับแต่ละ Section · สำนวนที่ออกบ่อย · ไวยากรณ์ที่ต้องรู้ · ประเภทคำถาม Reading · คำศัพท์ อ่านได้เลยไม่ต้องรอสอบ</span></span>
-        <span class="gc-go">อ่านเลย →</span>
-      </button>
+      <div class="cta-row">
+        <button class="card guide-cta" data-act="practice">
+          <span class="gc-icon">🎯</span>
+          <span><b>ฝึกทีละ Part</b><br><span class="muted">ทำจบ 1 Part แล้วดูเฉลย + วิเคราะห์ทันที${prRun ? ` · <b class="warn-text">ค้างอยู่: ${esc(prRun.title)}</b>` : ''}</span></span>
+          <span class="gc-go">เลือก Part →</span>
+        </button>
+        <button class="card guide-cta" data-act="guide">
+          <span class="gc-icon">📘</span>
+          <span><b>คู่มือเตรียมสอบ (ภาษาไทย)</b><br><span class="muted">เคล็ดลับ · สำนวน · ไวยากรณ์ · ประเภทคำถาม · คำศัพท์</span></span>
+          <span class="gc-go">อ่านเลย →</span>
+        </button>
+      </div>
       <section class="card overview">
+        <h3 style="margin:0 0 4px">ข้อสอบจำลองเต็มชุด</h3>
         <table><thead><tr><th>Section</th><th>จำนวน</th><th>เวลา</th></tr></thead><tbody>${rows}</tbody></table>
       </section>
       <section class="card">
         <h3 style="margin-bottom:8px">กติกาเหมือนห้องสอบ</h3>
         <ul class="rules">
           <li>ทำทีละ Section ตามลำดับ เมื่อส่งหรือหมดเวลาแล้วย้อนกลับไปแก้ส่วนก่อนหน้าไม่ได้</li>
-          <li>Listening เล่นเสียงต่อเนื่องจนจบ <b>หยุด ย้อน หรือฟังซ้ำไม่ได้</b> หลังคำถามแต่ละข้อมีเวลาตอบประมาณ 12 วินาที ใส่หูฟังจะได้ยินชัดที่สุด</li>
+          <li>Listening เล่นเสียงต่อเนื่องจนจบ <b>ย้อนหรือฟังซ้ำไม่ได้</b> หลังคำถามแต่ละข้อมีเวลาตอบประมาณ 12 วินาที ใส่หูฟังจะได้ยินชัดที่สุด</li>
           <li>Structure และ Reading ข้ามข้อ ย้อนข้อ และปักธงข้อที่ยังไม่แน่ใจได้ ระบบส่งคำตอบให้อัตโนมัติเมื่อหมดเวลา</li>
-          <li>ต้องการพักระหว่างทำ กดปุ่ม <b>⌂ หน้าแรก</b> ระบบจะหยุดเสียงและเวลาไว้ แล้วกด "ทำต่อ" เพื่อทำต่อจากจุดเดิม</li>
+          <li>ต้องการพัก กดปุ่ม <b>⏸ พัก</b> ระบบจะหยุดเสียงและเวลาไว้ แล้วกด <b>▶ ทำต่อ</b> เมื่อพร้อม</li>
           <li>คำตอบบันทึกในเครื่องนี้ ถ้าเผลอปิดหน้าเว็บก็กลับมาทำต่อได้</li>
         </ul>
         <div class="actions">
-          ${inProgress && S.phase === 'run' ? `<p class="paused-note">⏸ หยุดไว้ที่ Section ${S.sec + 1} · ${S.sec === 0
-            ? `เสียงนาทีที่ ${fmt(S.audioPos)}` : `เหลือเวลา ${fmt((S.remaining != null ? S.remaining : S.deadline - Date.now()) / 1000)}`}</p>` : ''}
-          ${inProgress ? `<button class="btn primary" data-act="resume">ทำต่อ (Section ${S.sec + 1})</button>
+          ${inProgress && EX.phase === 'run' ? `<p class="paused-note">⏸ หยุดไว้ที่ Section ${EX.sec + 1} · ${EX.sec === 0
+            ? `เสียงนาทีที่ ${fmt(EX.audioPos)}` : `เหลือเวลา ${fmt((EX.remaining != null ? EX.remaining : EX.deadline - Date.now()) / 1000)}`}</p>` : ''}
+          ${inProgress ? `<button class="btn primary" data-act="resume">ทำต่อ (Section ${EX.sec + 1})</button>
             <button class="btn ghost danger" data-act="restart">เริ่มใหม่ทั้งหมด</button>`
-            : `<button class="btn primary" data-act="start">เริ่มทำข้อสอบ</button>`}
-          ${S && S.phase === 'results' ? '<button class="btn ghost" data-act="show-results">ดูผลครั้งล่าสุด</button>' : ''}
+            : `<button class="btn primary" data-act="start">เริ่มทำข้อสอบเต็มชุด</button>`}
+          ${EX && EX.phase === 'results' ? '<button class="btn ghost" data-act="show-results">ดูผลครั้งล่าสุด</button>' : ''}
         </div>
       </section>
-      ${hist.length ? `<section class="card history"><h3>ประวัติการทำ</h3>${hist.slice(0, 8).map((h) => `
+      ${hist.length ? `<section class="card history"><h3>ประวัติการทำเต็มชุด</h3>${hist.slice(0, 8).map((h) => `
         <div class="hist-row"><span>${new Date(h.at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</span>
         <span class="muted">L ${h.c[0]}/${SECS[0].items.length} · S ${h.c[1]}/${SECS[1].items.length} · R ${h.c[2]}/${SECS[2].items.length}</span>
         <b>~${h.total}</b></div>`).join('')}</section>` : ''}
@@ -148,7 +191,54 @@
     </div>`;
   }
 
-  // ---------- section intro ----------
+  // ---------- practice picker ----------
+  function renderPractice() {
+    const PR = practiceState();
+    const ph = store.get(PHKEY, {});
+    const prRun = PR && PR.phase === 'run' ? partOf(PR.sec, PR.pi) : null;
+    const groups = E.sections.map((sec, si) => `<h3 class="pk-sec">Section ${si + 1}: ${esc(sec.name)}</h3>
+      <div class="pk-grid">${PARTS.filter((p) => p.si === si).map((p) => {
+        const h = ph[p.key] || [];
+        const last = h[0];
+        const best = h.reduce((m, x) => Math.max(m, x.c), 0);
+        const len = si === 0 ? `เสียง ~${Math.round((listenRange({ mode: 'part', pi: p.pi }).end - listenRange({ mode: 'part', pi: p.pi }).start) / 60)} นาที` : `${p.minutes} นาที`;
+        return `<div class="card pk">
+          <div class="pk-top"><b>${esc(p.title)}</b><span class="muted">${p.range} · ${p.idx.length} ข้อ · ${len}</span></div>
+          ${last ? `<div class="pk-score"><div class="meter"><i style="width:${(last.c / last.t) * 100}%"></i></div>
+            <span>ล่าสุด <b>${last.c}/${last.t}</b> · ดีที่สุด ${best}/${last.t} · ทำแล้ว ${h.length} ครั้ง</span></div>`
+            : '<div class="pk-score muted">ยังไม่เคยทำ</div>'}
+          <div class="actions" style="margin-top:10px">
+            ${prRun === p ? '<button class="btn primary small" data-act="practice-resume">▶ ทำต่อ</button>' : ''}
+            <button class="btn ${prRun === p ? 'ghost' : 'primary'} small" data-act="practice-start" data-si="${p.si}" data-pi="${p.pi}">${last ? 'ทำอีกครั้ง' : 'เริ่ม'}</button>
+            <button class="btn ghost small" data-act="guide" data-id="${['listening-tips', 'structure-tips', 'reading-tips'][si]}">📘 เคล็ดลับ</button>
+          </div></div>`;
+      }).join('')}</div>`).join('');
+    app.innerHTML = `<div class="bar"><div class="bar-in">
+        <button class="btn small ghost" data-act="home">⌂<span class="blabel"> หน้าแรก</span></button>
+        <div class="title"><small>TOEFL ITP</small><b>ฝึกทีละ Part</b></div>
+        ${themeBtn()}
+      </div></div>
+      <div class="wrap">
+        <p class="muted" style="margin-top:0">เลือก Part ที่ต้องการฝึก ทำจบแล้วระบบจะแสดงคะแนน เฉลยละเอียด และวิเคราะห์ว่าอ่อนประเภทคำถามไหน พร้อมลิงก์ไปอ่านคู่มือ เวลาของแต่ละ Part คิดตามสัดส่วนข้อสอบจริง</p>
+        ${prRun ? `<div class="note" style="margin-bottom:12px">⏸ ทำค้างไว้: <b>${esc(prRun.title)}</b> กด "ทำต่อ" ที่การ์ดของ Part นั้นเพื่อทำต่อ</div>` : ''}
+        ${groups}
+      </div>`;
+    window.scrollTo(0, 0);
+  }
+  function startPractice(si, pi) {
+    if (audio) { segEnd = null; audio.pause(); }
+    const p = partOf(si, pi);
+    S = { mode: 'part', phase: 'run', sec: si, pi, answers: [[], [], []], flags: [[], [], []], used: [0, 0, 0],
+      secStart: Date.now(), startedAt: Date.now(), tab: 0,
+      deadline: si > 0 ? Date.now() + p.minutes * 60000 : 0,
+      audioPos: si === 0 ? listenRange({ mode: 'part', pi }).start : 0 };
+    save();
+    clearHash();
+    showHome = false; resumeByClick = true;
+    render(); window.scrollTo(0, 0);
+  }
+
+  // ---------- section intro (mock exam) ----------
   function renderIntro() {
     const i = S.sec;
     const s = SECS[i];
@@ -159,7 +249,7 @@
       <div class="facts"><span class="fact">${s.items.length} ข้อ</span>
         <span class="fact">${i === 0 ? `เสียงยาว ~${minutesOf(0)} นาที` : `เวลา ${minutesOf(i)} นาที`}</span></div>
       <ul class="parts">${parts}</ul>
-      ${i === 0 ? `<div class="note">พอกดเริ่ม เสียงจะเล่นต่อเนื่องจนจบ Section หยุดหรือย้อนฟังไม่ได้ ให้กดปุ่มทดสอบเสียงเพื่อตั้งระดับเสียงก่อน</div>`
+      ${i === 0 ? `<div class="note">พอกดเริ่ม เสียงจะเล่นต่อเนื่องจนจบ Section ย้อนฟังไม่ได้ (กด ⏸ พัก ได้) ให้กดปุ่มทดสอบเสียงเพื่อตั้งระดับเสียงก่อน</div>`
         : `<div class="note">เวลาเริ่มนับทันทีที่กดเริ่ม และส่งคำตอบให้อัตโนมัติเมื่อหมดเวลา</div>`}
       <div class="actions">
         <button class="btn primary" data-act="begin">เริ่ม Section ${i + 1}</button>
@@ -204,18 +294,26 @@
   function palette(secIdx) {
     const s = SECS[secIdx];
     let html = '';
+    let prev = null;
     s.items.forEach((it, i) => {
-      if (i === 0 || s.items[i - 1].part !== it.part) html += `${i ? '<span class="sep"></span>' : ''}<span class="lbl">${esc(it.part.name.split(':')[0])}</span>`;
+      if (!inScope(i)) return;
+      if (prev !== it.part) html += `${prev ? '<span class="sep"></span>' : ''}<span class="lbl">${esc(it.part.name.split(':')[0])}</span>`;
+      prev = it.part;
       html += `<button data-go="${i}" class="${S.answers[secIdx][i] ? 'done' : ''} ${S.flags[secIdx][i] ? 'flag' : ''}">${it.n}</button>`;
     });
     return `<nav class="pal" aria-label="รายการข้อ">${html}</nav>`;
   }
+  const pauseBtn = () => '<button class="btn small ghost" data-act="pause" title="หยุดพัก">⏸<span class="blabel"> พัก</span></button>';
+  const runTitle = (secLabel) => (isPart()
+    ? `<small>ฝึกทีละ Part · Section ${S.sec + 1}</small><b>${esc(partOf(S.sec, S.pi).title)}</b>`
+    : `<small>Section ${S.sec + 1} of 3</small><b>${esc(secLabel)}</b>`);
 
   // ---------- listening ----------
   let audio = null;
   let segEnd = null; // review playback stop point
   let lastSave = 0;
   let shownPart = undefined;
+  let pausedByUser = false;
   function getAudio() {
     if (audio) return audio;
     audio = new Audio(E.listeningAudio);
@@ -225,7 +323,8 @@
     audio.addEventListener('waiting', () => setListenNote('กำลังโหลดเสียง…'));
     audio.addEventListener('playing', () => { setListenNote(''); hideOverlay(); });
     audio.addEventListener('pause', () => {
-      if (S && S.phase === 'run' && S.sec === 0 && !audio.ended && !showHome && location.hash !== '#guide') showOverlay('เสียงหยุดเล่น', 'กดปุ่มด้านล่างเพื่อเล่นต่อจากจุดเดิม', 'เล่นต่อ');
+      if (S && S.phase === 'run' && S.sec === 0 && !audio.ended && !showHome && !pausedByUser && !location.hash
+        && document.getElementById('lstat')) showOverlay('เสียงหยุดเล่น', 'กดปุ่มด้านล่างเพื่อเล่นต่อจากจุดเดิม', 'เล่นต่อ');
       document.querySelectorAll('.play.on').forEach((b) => b.classList.remove('on'));
     });
     audio.addEventListener('error', () => {
@@ -233,22 +332,24 @@
     });
     return audio;
   }
+  const resumeFrom = () => Math.max(listenRange().start, S.audioPos - 2);
   function playListening(from) {
     const a = getAudio();
-    segEnd = null;
+    segEnd = null; pausedByUser = false;
     if (a.error) a.load();
     const p = seekPlay(a, from);
     if (p) p.catch(() => showOverlay('เบราว์เซอร์ไม่ยอมเล่นเสียงอัตโนมัติ', 'กดปุ่มด้านล่างเพื่อเริ่มเล่นเสียง', 'เล่นเสียง'));
   }
-  function showOverlay(title, body, btn) {
+  function showOverlay(title, body, btn, onPlay, cls = '') {
     hideOverlay();
     const o = document.createElement('div');
-    o.className = 'overlay'; o.id = 'overlay';
+    o.className = `overlay ${cls}`; o.id = 'overlay';
     o.innerHTML = `<div class="card"><h3>${esc(title)}</h3><p class="muted">${esc(body)}</p><div class="actions" style="justify-content:center">
       <button class="btn primary" data-o="play">▶ ${esc(btn)}</button><button class="btn ghost" data-o="home">⌂ หน้าแรก</button></div></div>`;
     document.body.appendChild(o);
-    o.querySelector('[data-o="play"]').addEventListener('click', () => { hideOverlay(); playListening(Math.max(0, S.audioPos - 2)); });
+    o.querySelector('[data-o="play"]').addEventListener('click', () => { hideOverlay(); (onPlay || (() => playListening(resumeFrom())))(); });
     o.querySelector('[data-o="home"]').addEventListener('click', () => { hideOverlay(); goHome(); });
+    o.querySelector('[data-o="play"]').focus();
   }
   function hideOverlay() { const o = document.getElementById('overlay'); if (o) o.remove(); }
   function setListenNote(t) { const n = document.getElementById('lnote'); if (n) n.textContent = t; }
@@ -261,12 +362,14 @@
   }
   function renderListening() {
     shownPart = undefined;
+    const r = listenRange();
     app.innerHTML = `<div class="bar"><div class="bar-in listen">
-        <div class="title"><small>Section 1 of 3</small><b>Listening Comprehension</b></div>
+        <div class="title">${runTitle('Listening Comprehension')}</div>
         <div class="listen-status"><div class="eq off" id="eq"><i></i><i></i><i></i><i></i></div>
           <div class="txt" id="lstat">พร้อมเริ่ม<small id="lnote"></small></div>
           <span class="countdown" id="lcount" hidden></span></div>
-        <span class="prog-time" id="ltime">0:00 / ${fmt(CUES.duration)}</span>
+        <span class="prog-time" id="ltime">0:00 / ${fmt(r.end - r.start)}</span>
+        ${pauseBtn()}
         <button class="btn small ghost" data-act="exit">⌂<span class="blabel"> หน้าแรก</span></button>
         ${themeBtn()}
       </div><div class="prog"><i id="lprog"></i></div></div>
@@ -276,9 +379,9 @@
     const byClick = resumeByClick;
     resumeByClick = false;
     if (a.paused) {
-      if (byClick) playListening(Math.max(0, S.audioPos - 2));
-      else if (S.audioPos > 1) showOverlay('ทำ Listening ต่อ', `เสียงจะเล่นต่อจากนาทีที่ ${fmt(S.audioPos)}`, 'เล่นต่อ');
-      else playListening(0);
+      if (byClick) playListening(resumeFrom());
+      else if (S.audioPos > r.start + 1) showOverlay('ทำ Listening ต่อ', `เสียงจะเล่นต่อจากนาทีที่ ${fmt(S.audioPos - r.start)}`, 'เล่นต่อ');
+      else playListening(r.start);
     }
   }
   function updateBooklet(t) {
@@ -309,6 +412,8 @@
     }
     if (!S || S.phase !== 'run' || S.sec !== 0 || !document.getElementById('lstat')) return;
     const t = a.currentTime;
+    const r = listenRange();
+    if (isPart() && t >= r.end) { finishSection(); return; }
     S.audioPos = t;
     if (Date.now() - lastSave > 2000) { lastSave = Date.now(); save(); }
     updateBooklet(t);
@@ -316,8 +421,8 @@
     const stat = document.getElementById('lstat');
     const count = document.getElementById('lcount');
     document.getElementById('eq')?.classList.toggle('off', a.paused);
-    document.getElementById('ltime').textContent = `${fmt(t)} / ${fmt(CUES.duration)}`;
-    document.getElementById('lprog').style.width = `${(t / CUES.duration) * 100}%`;
+    document.getElementById('ltime').textContent = `${fmt(t - r.start)} / ${fmt(r.end - r.start)}`;
+    document.getElementById('lprog').style.width = `${((t - r.start) / (r.end - r.start)) * 100}%`;
     document.querySelectorAll('.q.now').forEach((el) => { if (!cue || el.dataset.i !== String(cue.q - 1)) el.classList.remove('now'); });
     if (cue) {
       const card = document.getElementById(`q-0-${cue.q - 1}`);
@@ -352,32 +457,56 @@
     btn.classList.add('on');
   }
 
+  // ---------- pause ----------
+  function pauseRun() {
+    if (!S || S.phase !== 'run') return;
+    if (S.sec === 0) {
+      pausedByUser = true;
+      if (audio) { S.audioPos = audio.currentTime || S.audioPos; audio.pause(); }
+    } else if (S.remaining == null) {
+      S.remaining = Math.max(0, S.deadline - Date.now());
+      clearInterval(tick); tick = null;
+    }
+    save();
+    const left = S.sec === 0 ? `เสียงหยุดไว้ที่นาที ${fmt(S.audioPos - listenRange().start)}` : `เวลาที่เหลือ ${fmt(S.remaining / 1000)} หยุดนับไว้แล้ว`;
+    showOverlay('พักอยู่ ⏸', `${left} กดทำต่อเมื่อพร้อม`, 'ทำต่อ', resumeRun, 'pause');
+  }
+  function resumeRun() {
+    if (S.sec === 0) { playListening(resumeFrom()); return; }
+    const y = window.scrollY;
+    render(); // recomputes the deadline from the remaining time and restarts the clock
+    window.scrollTo(0, y);
+  }
+
   // ---------- timed sections (2 & 3) ----------
   function renderTimed() {
     const i = S.sec;
     const s = SECS[i];
     const isReading = s.sec.id === 'reading';
+    const parts = isPart() ? [s.sec.parts[S.pi]] : s.sec.parts;
     let body;
     if (isReading) {
-      const part = s.sec.parts[S.tab] || s.sec.parts[0];
+      const tab = Math.min(S.tab || 0, parts.length - 1);
+      const part = parts[tab];
       const items = s.items.map((it, j) => [it, j]).filter(([it]) => it.part === part);
       body = `<div class="split">
-        <section class="card passage"><div class="tabs">${s.sec.parts.map((p, k) => `<button class="tab ${k === S.tab ? 'on' : ''}" data-act="tab" data-tab="${k}">${esc(p.name)}</button>`).join('')}</div>
+        <section class="card passage"><div class="tabs">${parts.map((p, k) => `<button class="tab ${k === tab ? 'on' : ''}" data-act="tab" data-tab="${k}">${esc(p.name)}</button>`).join('')}</div>
           ${passageHTML(part)}</section>
         <section class="qlist" style="display:grid;gap:14px">${items.map(([it, j]) => questionCard(i, it, j)).join('')}</section></div>`;
     } else {
-      body = `<div class="sec-wrap">${s.sec.parts.map((p) => {
+      body = `<div class="sec-wrap">${parts.map((p) => {
         const items = s.items.map((it, j) => [it, j]).filter(([it]) => it.part === p);
         return `<div class="part-head"><h2>${esc(p.name)}</h2><p>${esc(p.directionsTh)}</p></div>
           <div class="qlist">${items.map(([it, j]) => questionCard(i, it, j)).join('')}</div>`;
       }).join('')}</div>`;
     }
     app.innerHTML = `<div class="bar"><div class="bar-in">
-        <div class="title"><small>Section ${i + 1} of 3</small><b>${esc(s.sec.name)}</b></div>
+        <div class="title">${runTitle(s.sec.name)}</div>
         <span class="timer" id="timer">--:--</span>
+        ${pauseBtn()}
         <button class="btn small ghost" data-act="exit">⌂<span class="blabel"> หน้าแรก</span></button>
         ${themeBtn()}
-        <button class="btn small primary" data-act="submit">ส่ง Section ${i + 1}</button>
+        <button class="btn small primary" data-act="submit">ส่ง${isPart() ? '' : `<span class="blabel"> Section ${i + 1}</span>`}</button>
       </div>${palette(i)}</div>${body}`;
     const update = () => {
       const left = (S.deadline - Date.now()) / 1000;
@@ -409,19 +538,21 @@
       </div>
       <nav class="pal toc" aria-label="สารบัญ">${G.map((g) => `<button class="tab" data-act="gscroll" data-id="${g.id}">${esc(g.title)}</button>`).join('')}</nav></div>
       <div class="guide">${G.map((g) => `<section class="card g-sec" id="g-${g.id}"><h2>${esc(g.title)}</h2>${g.body}</section>`).join('')}
-        <div class="actions" style="justify-content:center"><button class="btn primary" data-act="guide-back">← กลับไปหน้าข้อสอบ</button></div>
+        <div class="actions" style="justify-content:center"><button class="btn primary" data-act="guide-back">← กลับ</button></div>
         <p class="foot">ส่วน "เคล็ดลับจากเอกสาร" และประเภทคำถาม Reading แปลจาก ${esc(E.source)} · ส่วนอื่นเป็นเนื้อหาเสริม</p></div>`;
     const el = focus && document.getElementById(`g-${focus}`);
     if (el) el.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
   }
-  function openGuide(id) {
-    if (audio && !(S && S.phase === 'run' && S.sec === 0)) { segEnd = null; audio.pause(); }
-    history.pushState({ guide: 1 }, '', '#guide');
-    renderGuide(id);
+  function stopReviewAudio() { if (audio && !(S && S.phase === 'run' && S.sec === 0)) { segEnd = null; audio.pause(); } }
+  function openRoute(hash, focus) {
+    stopReviewAudio();
+    if (S && S.phase === 'run') { goHome(); }
+    history.pushState({ route: 1 }, '', hash);
+    if (hash === '#guide') renderGuide(focus); else renderPractice();
   }
-  function closeGuide() {
-    if (history.state && history.state.guide) history.back();
-    else { history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); }
+  function closeRoute() {
+    if (history.state && history.state.route) history.back();
+    else { clearHash(); render(); window.scrollTo(0, 0); }
   }
   window.addEventListener('popstate', () => render());
   window.addEventListener('hashchange', () => render());
@@ -435,7 +566,7 @@
     showHome = true;
     if (audio) { segEnd = null; audio.pause(); }
     hideOverlay();
-    if (location.hash === '#guide') history.replaceState(null, '', location.pathname + location.search);
+    clearHash();
     render(); window.scrollTo(0, 0);
   }
   // Closing the tab mid-section stops the clock too.
@@ -447,8 +578,15 @@
   function finishSection() {
     const i = S.sec;
     S.used[i] = Math.round((Date.now() - S.secStart) / 1000);
-    if (i === 0 && audio) { segEnd = null; S.sec = 1; audio.pause(); hideOverlay(); }
-    if (i < 2) { S.sec = i + 1; S.phase = 'intro'; S.tab = 0; }
+    if (i === 0 && audio) { segEnd = null; S.phase = 'finishing'; audio.pause(); hideOverlay(); }
+    if (isPart()) {
+      S.phase = 'results'; S.finishedAt = Date.now();
+      const p = partOf(S.sec, S.pi);
+      const ph = store.get(PHKEY, {});
+      const c = p.idx.filter((j) => S.answers[i][j] === SECS[i].items[j].q.answer).length;
+      ph[p.key] = [{ at: S.finishedAt, c, t: p.idx.length }, ...(ph[p.key] || [])].slice(0, 10);
+      store.set(PHKEY, ph);
+    } else if (i < 2) { S.sec = i + 1; S.phase = 'intro'; S.tab = 0; }
     else {
       S.phase = 'results'; S.finishedAt = Date.now();
       const sc = scores(S.answers);
@@ -465,8 +603,74 @@
     save(); render(); window.scrollTo(0, 0);
   }
 
+  // ---------- analysis ----------
+  // entries: [[sectionIndex, questionIndex], ...] of the questions in this attempt.
+  function analysisHTML(entries, opts = {}) {
+    const total = entries.length;
+    const correct = entries.filter(([si, j]) => S.answers[si][j] === SECS[si].items[j].q.answer).length;
+    const blanks = entries.filter(([si, j]) => !S.answers[si][j]);
+    const pct = Math.round((correct / total) * 100);
+    const verdict = pct >= 85 ? ['ยอดเยี่ยม', 'ok', 'แม่นเกือบทุกข้อ รักษามาตรฐานนี้ไว้ แล้วลองฝึกทำให้เร็วขึ้น']
+      : pct >= 70 ? ['ดี', 'ok', 'พื้นฐานแน่น เก็บรายละเอียดจุดที่ยังพลาดอีกนิดคะแนนจะขึ้นชัดเจน']
+        : pct >= 50 ? ['พอใช้', 'warn', 'ทำได้ครึ่งหนึ่งขึ้นไป แต่ยังมีประเภทคำถามที่ต้องฝึกเพิ่ม ดูรายการด้านล่าง']
+          : ['ต้องฝึกเพิ่ม', 'bad', 'เริ่มจากอ่านคู่มือของประเภทคำถามที่พลาด แล้วกลับมาทำ Part นี้อีกครั้ง'];
+    // Group by tag, keeping section order.
+    const groups = new Map();
+    entries.forEach(([si, j]) => {
+      const key = A.map[E.sections[si].id][j];
+      if (!groups.has(key)) groups.set(key, { key, si, tag: A.tags[key], total: 0, correct: 0, wrong: [] });
+      const g = groups.get(key);
+      g.total += 1;
+      if (S.answers[si][j] === SECS[si].items[j].q.answer) g.correct += 1;
+      else g.wrong.push(SECS[si].items[j].n);
+    });
+    const rows = [...groups.values()].map((g) => ({ ...g, pct: g.correct / g.total }));
+    const weak = rows.filter((g) => g.pct < 0.6).sort((a, b) => a.pct - b.pct);
+    const strong = rows.filter((g) => g.pct >= 0.8);
+    const notes = [];
+    if (blanks.length) {
+      notes.push(opts.listening
+        ? `ไม่ได้ตอบ ${blanks.length} ข้อ ใน Listening ให้เลือกคำตอบทันทีที่ได้ยินคำถาม ถ้าไม่แน่ใจให้เดาไว้ก่อน เพราะตอบผิดไม่ติดลบ`
+        : `ไม่ได้ตอบ ${blanks.length} ข้อ ตอบผิดไม่ติดลบ ก่อนหมดเวลาให้เดาข้อที่เหลือทุกครั้ง`);
+    }
+    if (opts.limit && opts.used) {
+      const per = Math.round(opts.used / total);
+      if (blanks.length && opts.used >= opts.limit - 3) notes.push(`หมดเวลาก่อนทำครบ เฉลี่ย ${per} วินาทีต่อข้อ ลองตั้งเป้า ~${Math.round(opts.limit / total)} วินาทีต่อข้อ และข้ามข้อยากไปก่อน`);
+      else if (opts.used < opts.limit * 0.5 && pct < 70) notes.push(`ใช้เวลาไปเพียง ${fmt(opts.used)} จาก ${fmt(opts.limit)} ยังมีเวลาเหลือมาก ลองอ่านให้ละเอียดขึ้นและทวนข้อที่ไม่แน่ใจ`);
+      else notes.push(`ใช้เวลา ${fmt(opts.used)} จาก ${fmt(opts.limit)} (เฉลี่ย ${per} วินาทีต่อข้อ)`);
+    }
+    const secNames = ['Listening', 'Structure', 'Reading'];
+    const bySec = [0, 1, 2].map((si) => rows.filter((g) => g.si === si)).filter((r) => r.length);
+    const table = bySec.map((list) => `${bySec.length > 1 ? `<h4 class="ana-sec">${secNames[list[0].si]}</h4>` : ''}
+      ${[...list].sort((a, b) => a.pct - b.pct).map((g) => `<div class="ana-row ${g.pct < 0.6 ? 'bad' : g.pct >= 0.8 ? 'ok' : 'warn'}">
+        <span class="ana-name">${esc(g.tag.name)}</span>
+        <span class="meter"><i style="width:${g.pct * 100}%"></i></span>
+        <span class="ana-n">${g.correct}/${g.total}</span></div>`).join('')}`).join('');
+    return `<section class="card analysis">
+      <div class="ana-head"><h2>วิเคราะห์ผล</h2><span class="chip ${verdict[1] === 'ok' ? 'ok' : verdict[1] === 'warn' ? 'skip' : 'bad'}">${verdict[0]} · ${pct}%</span></div>
+      <p style="margin:6px 0 0">${verdict[2]}</p>
+      ${notes.length ? `<ul class="ana-notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+      <h3>ผลแยกตามประเภทคำถาม</h3>
+      <div class="ana-table">${table}</div>
+      <div class="ana-cols">
+        <div class="ana-box bad"><h3>ควรฝึกเพิ่ม</h3>${weak.length ? weak.map((g) => `<div class="ana-item">
+          <b>${esc(g.tag.name)}</b> <span class="muted">(ผิดข้อ ${g.wrong.join(', ')})</span>
+          <p>${esc(g.tag.advice)}</p>
+          <button class="btn small ghost" data-act="guide" data-id="${g.tag.guide}">📘 อ่านคู่มือส่วนนี้</button></div>`).join('')
+          : '<p class="muted">ไม่มีประเภทที่ต่ำกว่า 60% 👍</p>'}</div>
+        <div class="ana-box ok"><h3>จุดแข็ง</h3>${strong.length ? `<ul>${strong.map((g) => `<li>${esc(g.tag.name)} <span class="muted">${g.correct}/${g.total}</span></li>`).join('')}</ul>`
+          : '<p class="muted">ยังไม่มีประเภทที่ได้ 80% ขึ้นไป ฝึกต่ออีกนิด</p>'}</div>
+      </div>
+    </section>`;
+  }
+
   // ---------- results ----------
   let filter = 'all';
+  const filterBar = () => `<div class="filters">
+        <button class="tab ${filter === 'all' ? 'on' : ''}" data-act="filter" data-f="all">ทุกข้อ</button>
+        <button class="tab ${filter === 'wrong' ? 'on' : ''}" data-act="filter" data-f="wrong">เฉพาะข้อที่ผิด / ไม่ได้ตอบ</button>
+        <button class="tab ${filter === 'flag' ? 'on' : ''}" data-act="filter" data-f="flag">ข้อที่ปักธง</button>
+      </div>`;
   function renderResults() {
     const sc = scores(S.answers);
     const cards = sc.secs.map((x, i) => `<div class="sc"><h4>${esc(SECS[i].sec.name)}</h4>
@@ -475,6 +679,7 @@
       <div class="est">${Math.round((x.correct / x.total) * 100)}% · ประมาณ ${x.scaled} คะแนน (${RANGES[i][0]}–${RANGES[i][1]})${S.used[i] ? ` · ใช้เวลา ${fmt(S.used[i])}` : ''}</div></div>`).join('');
     const totalCorrect = sc.secs.reduce((a, x) => a + x.correct, 0);
     const totalQ = sc.secs.reduce((a, x) => a + x.total, 0);
+    const entries = SECS.flatMap((s, si) => s.items.map((it, j) => [si, j]));
     app.innerHTML = `<div class="wrap">
       <section class="card">
         <div class="score-hero"><div>
@@ -484,24 +689,54 @@
           <span style="font-size:13px">ประมาณจากสัดส่วนข้อที่ถูกเท่านั้น เพราะชุดนี้มี ${totalQ} ข้อ ส่วนข้อสอบจริงมี 140 ข้อ</span></p></div>
           <div class="actions" style="margin:0;flex-direction:column">
             <button class="btn primary" data-act="restart">ทำใหม่อีกครั้ง</button>
+            <button class="btn ghost" data-act="practice">🎯 ฝึกทีละ Part</button>
             <button class="btn ghost" data-act="guide">📘 คู่มือเตรียมสอบ</button>
             <button class="btn ghost" data-act="home">⌂ หน้าแรก</button>
             ${themeBtn()}</div></div>
         <div class="secs">${cards}</div>
       </section>
-      <div class="filters">
-        <button class="tab ${filter === 'all' ? 'on' : ''}" data-act="filter" data-f="all">ทุกข้อ</button>
-        <button class="tab ${filter === 'wrong' ? 'on' : ''}" data-act="filter" data-f="wrong">เฉพาะข้อที่ผิด / ไม่ได้ตอบ</button>
-        <button class="tab ${filter === 'flag' ? 'on' : ''}" data-act="filter" data-f="flag">ข้อที่ปักธง</button>
-      </div>
+      ${analysisHTML(entries)}
+      ${filterBar()}
       ${SECS.map((s, i) => reviewSection(s, i)).join('')}
       <p class="foot">${esc(E.source)}</p>
     </div>`;
   }
-  function reviewSection(s, si) {
-    let html = `<section class="rv-sec"><h2>Section ${si + 1}: ${esc(s.sec.name)}</h2>`;
+  function renderPartResults() {
+    const p = partOf(S.sec, S.pi);
+    const si = S.sec;
+    const correct = p.idx.filter((j) => S.answers[si][j] === SECS[si].items[j].q.answer).length;
+    const k = PARTS.indexOf(p);
+    const next = PARTS[k + 1];
+    const r = si === 0 ? listenRange() : null;
+    const limit = si === 0 ? 0 : p.minutes * 60;
+    app.innerHTML = `<div class="bar"><div class="bar-in">
+        <button class="btn small ghost" data-act="practice">← เลือก Part</button>
+        <div class="title"><small>ผลฝึก · Section ${si + 1}</small><b>${esc(p.title)}</b></div>
+        <button class="btn small ghost" data-act="home">⌂<span class="blabel"> หน้าแรก</span></button>
+        ${themeBtn()}
+      </div></div>
+      <div class="wrap">
+      <section class="card">
+        <div class="score-hero"><div>
+          <div class="eyebrow">ผลฝึก ${esc(E.sections[si].name)} · ${p.range}</div>
+          <div class="big">${correct}<small> / ${p.idx.length} ข้อ</small></div>
+          <div class="meter" style="max-width:360px"><i style="width:${(correct / p.idx.length) * 100}%"></i></div>
+          <p class="muted" style="margin:6px 0 0">${si === 0 ? `ความยาวเสียง ${fmt(r.end - r.start)}` : `ใช้เวลา ${fmt(S.used[si])} จาก ${fmt(limit)}`}</p></div>
+          <div class="actions" style="margin:0;flex-direction:column">
+            <button class="btn primary" data-act="practice-start" data-si="${p.si}" data-pi="${p.pi}">↻ ทำ Part นี้อีกครั้ง</button>
+            ${next ? `<button class="btn ghost" data-act="practice-start" data-si="${next.si}" data-pi="${next.pi}">Part ถัดไป: ${esc(next.title)} →</button>` : ''}
+            <button class="btn ghost" data-act="practice">เลือก Part อื่น</button></div></div>
+      </section>
+      ${analysisHTML(p.idx.map((j) => [si, j]), { listening: si === 0, used: S.used[si], limit })}
+      ${filterBar()}
+      ${reviewSection(SECS[si], si, p.part)}
+      </div>`;
+  }
+  function reviewSection(s, si, onlyPart) {
+    let html = `<section class="rv-sec"><h2>${onlyPart ? 'เฉลย' : `Section ${si + 1}: ${esc(s.sec.name)}`}</h2>`;
     let shown = 0;
     s.sec.parts.forEach((p) => {
+      if (onlyPart && p !== onlyPart) return;
       const items = s.items.map((it, j) => [it, j]).filter(([it]) => it.part === p).filter(([it, j]) => {
         const a = S.answers[si][j];
         if (filter === 'wrong') return a !== it.q.answer;
@@ -553,6 +788,7 @@
     const errLine = isErr ? `<p style="margin:6px 0 0">คุณเลือก <b>${a || '—'}</b> · คำตอบที่ถูก <b>${q.answer}</b> · แก้เป็น <b class="en">${esc(q.fix)}</b></p>` : '';
     return `<article class="rv ${st}">
       <div class="q-top"><span class="qn">${it.n}.</span>${stem}<span class="chip ${st}">${chip}</span></div>
+      <div class="qtype">ประเภท: ${esc(tagOf(si, j).name)}</div>
       ${extra}${opts}${errLine}
       <div class="explain"><b>เฉลย ${q.answer}:</b> ${esc(q.explain)}</div></article>`;
   }
@@ -563,7 +799,7 @@
     if (go) {
       const idx = Number(go.dataset.go);
       const it = SECS[S.sec].items[idx];
-      if (SECS[S.sec].sec.id === 'reading') {
+      if (SECS[S.sec].sec.id === 'reading' && !isPart()) {
         const k = SECS[S.sec].sec.parts.indexOf(it.part);
         if (k !== S.tab) { S.tab = k; save(); render(); }
       }
@@ -576,23 +812,34 @@
     const card = el.closest('.q');
     switch (act) {
       case 'start': showHome = false; S = fresh(); save(); render(); break;
-      case 'resume': case 'show-results': showHome = false; resumeByClick = true; render(); window.scrollTo(0, 0); break;
-      case 'home': goHome(); break;
+      case 'resume': case 'show-results': S = examState(); showHome = false; resumeByClick = true; render(); window.scrollTo(0, 0); break;
+      case 'home': stopReviewAudio(); goHome(); break;
       case 'exit':
         if (await ask('กลับหน้าแรก?', S.sec === 0
-          ? 'เสียงจะหยุดไว้ตรงนี้ กด "ทำต่อ" ที่หน้าแรกเพื่อฟังต่อจากจุดเดิม'
-          : 'เวลาจะหยุดไว้ คำตอบที่ทำแล้วยังอยู่ กด "ทำต่อ" ที่หน้าแรกเพื่อทำต่อ', 'กลับหน้าแรก')) goHome();
+          ? 'เสียงจะหยุดไว้ตรงนี้ กด "ทำต่อ" เพื่อฟังต่อจากจุดเดิม'
+          : 'เวลาจะหยุดไว้ คำตอบที่ทำแล้วยังอยู่ กด "ทำต่อ" เพื่อทำต่อ', 'กลับหน้าแรก')) goHome();
         break;
+      case 'pause': pauseRun(); break;
       case 'restart':
-        if (await ask('เริ่มทำใหม่ทั้งหมด?', 'คำตอบที่ทำค้างไว้จะถูกล้าง (ประวัติคะแนนยังอยู่)', 'เริ่มใหม่')) {
-          if (audio) { segEnd = null; audio.pause(); }
-          showHome = false; S = fresh(); save(); render(); window.scrollTo(0, 0);
+        if (await ask('เริ่มทำข้อสอบเต็มชุดใหม่?', 'คำตอบที่ทำค้างไว้จะถูกล้าง (ประวัติคะแนนยังอยู่)', 'เริ่มใหม่')) {
+          stopReviewAudio();
+          showHome = false; S = fresh(); save(); clearHash(); render(); window.scrollTo(0, 0);
         }
         break;
       case 'begin': begin(); break;
       case 'theme': toggleTheme(); break;
-      case 'guide': openGuide(el.dataset.id); break;
-      case 'guide-back': closeGuide(); break;
+      case 'guide': openRoute('#guide', el.dataset.id); break;
+      case 'practice': openRoute('#practice'); break;
+      case 'guide-back': closeRoute(); break;
+      case 'practice-start': {
+        const si = Number(el.dataset.si); const pi = Number(el.dataset.pi);
+        const PR = practiceState();
+        if (PR && PR.phase === 'run'
+          && !(await ask('เริ่ม Part ใหม่?', `มี Part ที่ทำค้างอยู่ (${partOf(PR.sec, PR.pi).title}) ถ้าเริ่มใหม่ คำตอบที่ค้างจะถูกล้าง`, 'เริ่มใหม่'))) break;
+        startPractice(si, pi);
+        break;
+      }
+      case 'practice-resume': S = practiceState(); clearHash(); showHome = false; resumeByClick = true; render(); window.scrollTo(0, 0); break;
       case 'gscroll': document.getElementById(`g-${el.dataset.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       case 'soundcheck': new Audio(E.soundCheck).play().catch(() => toast('เล่นเสียงไม่ได้')); break;
       case 'ans':
@@ -608,20 +855,21 @@
       }
       case 'tab': S.tab = Number(el.dataset.tab); save(); render(); window.scrollTo(0, 0); break;
       case 'submit': {
-        const blank = SECS[S.sec].items.filter((it, j) => !S.answers[S.sec][j]).length;
-        const ok = await ask(`ส่ง Section ${S.sec + 1}?`, `${blank ? `ยังไม่ได้ตอบ ${blank} ข้อ ` : 'ตอบครบทุกข้อแล้ว '}เมื่อส่งแล้วจะกลับมาแก้ส่วนนี้ไม่ได้`, 'ส่งคำตอบ');
+        const blank = SECS[S.sec].items.filter((it, j) => inScope(j) && !S.answers[S.sec][j]).length;
+        const what = isPart() ? 'Part นี้' : `Section ${S.sec + 1}`;
+        const ok = await ask(`ส่ง${what}?`, `${blank ? `ยังไม่ได้ตอบ ${blank} ข้อ ` : 'ตอบครบทุกข้อแล้ว '}เมื่อส่งแล้วจะกลับมาแก้ไม่ได้${isPart() ? ' และจะเห็นเฉลยพร้อมวิเคราะห์ทันที' : ''}`, 'ส่งคำตอบ');
         if (ok && S.phase === 'run') finishSection();
         break;
       }
-      case 'filter': filter = el.dataset.f; renderResults(); break;
+      case 'filter': filter = el.dataset.f; render(); break;
       case 'play': playSegment(Number(el.dataset.from), Number(el.dataset.to), el); break;
       default: break;
     }
   });
 
-  // Keyboard shortcuts in timed sections: A–D answers the question nearest the top of the viewport.
+  // Keyboard shortcuts while answering: A–D answers the question nearest the top of the viewport.
   document.addEventListener('keydown', (e) => {
-    if (!S || S.phase !== 'run' || !modal.hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!S || S.phase !== 'run' || !modal.hidden || document.getElementById('overlay') || e.metaKey || e.ctrlKey || e.altKey) return;
     const l = e.key.toUpperCase();
     if (!LETTERS.includes(l)) return;
     const cards = [...document.querySelectorAll('.q')];

@@ -1,0 +1,51 @@
+// Skill tags for the result analysis. `map` lists one tag per question, in the same order as
+// the questions in each section of data.js. `guide` points at a section id in guide.js.
+window.ANALYSIS = {
+  tags: {
+    // Listening
+    L_imply: { name: 'ความหมายแฝง (imply)', guide: 'listening-tips',
+      advice: 'อย่าเลือกตามคำที่ได้ยิน ให้ถามตัวเองว่าผู้พูดคนที่สอง "หมายความว่าอะไร" จริงๆ คำตอบที่ถูกมักเป็นการตีความ ไม่ใช่การทวนคำ' },
+    L_idiom: { name: 'สำนวน (idioms)', guide: 'idioms',
+      advice: 'ท่องสำนวนและ phrasal verbs ที่ออกบ่อย คำตอบที่ถูกมักแปลสำนวนเป็นภาษาธรรมดา เช่น "take it easy" → "get more rest"' },
+    L_suggest: { name: 'คำแนะนำ (suggestion)', guide: 'listening-tips',
+      advice: 'จำรูปประโยคแนะนำ เช่น "Have you checked...?", "Why don\'t you...?", "not to wait until..." แล้วแปลงเป็น "should ..."' },
+    L_future: { name: 'สิ่งที่จะทำต่อ (What will ... do?)', guide: 'listening-tips',
+      advice: 'ตั้งใจฟังประโยคสุดท้ายของบทสนทนา และระวังตัวเลือกที่ใช้คำเดียวกับในเสียงแต่ความหมายไม่ตรง' },
+    L_main: { name: 'ใจความหลัก / จุดประสงค์ (Part B–C)', guide: 'listening-tips',
+      advice: 'ข้อแรกของบทสนทนายาวหรือบรรยายมักถามหัวข้อ ฟังช่วง 2–3 ประโยคแรกให้ดี และเลือกคำตอบที่ครอบคลุมทั้งเรื่อง' },
+    L_detail: { name: 'รายละเอียด & การอนุมาน (Part B–C)', guide: 'listening-tips',
+      advice: 'อ่านตัวเลือกล่วงหน้าตอนที่มีช่วงเงียบ แล้วฟังหาคำที่ถอดความจากตัวเลือก คำถามมักเรียงตามลำดับเนื้อหา' },
+    // Structure
+    G_sentence: { name: 'โครงสร้างประโยค (ประธาน / กริยา / อนุประโยค)', guide: 'grammar',
+      advice: 'หาประธานและกริยาหลักก่อนทุกครั้ง แล้วนับว่ามีกริยาแท้เท่าไร ส่วนขยายต้องเป็น relative clause, appositive หรือ V-ing/V3' },
+    G_connector: { name: 'คำเชื่อม vs คำบุพบท', guide: 'grammar',
+      advice: 'ดูว่าหลังช่องเป็นอนุประโยค (S+V) หรือนามวลี: because / although / while + S+V ส่วน because of / despite / during + นาม' },
+    G_parallel: { name: 'โครงสร้างขนาน & รูปคำ', guide: 'grammar',
+      advice: 'สิ่งที่เชื่อมด้วย and / or ต้องเป็นชนิดคำเดียวกัน และเช็กตำแหน่งในประโยคว่าต้องเป็นนาม คุณศัพท์ หรือกริยาวิเศษณ์' },
+    G_noun: { name: 'คำนาม สรรพนาม และ article', guide: 'grammar',
+      advice: 'เช็ก many/much, เอกพจน์/พหูพจน์, คำนำหน้านามนับได้เอกพจน์, สรรพนามรูปประธาน/กรรม และเลขลำดับที่ (twentieth)' },
+    G_verb: { name: 'รูปแบบกริยา & การเปรียบเทียบ', guide: 'grammar',
+      advice: 'จำคู่คำที่ต้องใช้ด้วยกัน เช่น enable + sb + to V, reject + นาม, adj-er + than, to + V1 บอกจุดประสงค์' },
+    // Reading
+    R_main: { name: 'ใจความหลัก (Main Idea)', guide: 'question-types',
+      advice: 'skim อ่านประโยคแรกของทุกย่อหน้า แล้วเลือกคำตอบที่ครอบคลุมทั้งบท ไม่ใช่แค่ย่อหน้าเดียว' },
+    R_fact: { name: 'ข้อเท็จจริง & EXCEPT/NOT', guide: 'question-types',
+      advice: 'scan หาคำสำคัญของคำถามในบทความ แล้วอ่านเฉพาะประโยครอบๆ ข้อ EXCEPT/NOT ให้หา 3 ตัวเลือกที่บทความพูดถึงก่อน' },
+    R_vocab: { name: 'คำศัพท์ในบริบท', guide: 'academic',
+      advice: 'แทนตัวเลือกลงในประโยคแล้วดูว่าความหมายยังเหมือนเดิมไหม และท่องศัพท์วิชาการเป็นคู่คำพ้องความหมาย' },
+    R_ref: { name: 'การอ้างอิงคำ (it / they / this)', guide: 'question-types',
+      advice: 'ย้อนไปหาคำนามก่อนหน้าที่ตรงทั้งจำนวน (เอกพจน์/พหูพจน์) และความหมาย แล้วแทนลงไปเช็ก' },
+    R_infer: { name: 'การอนุมาน (Inference)', guide: 'question-types',
+      advice: 'คำตอบต้องมีหลักฐานในบทความรองรับ แม้ไม่ได้เขียนไว้ตรงๆ อย่าใช้ความรู้ส่วนตัวตอบ' },
+    R_org: { name: 'การเรียบเรียง & จุดประสงค์', guide: 'question-types',
+      advice: 'ถามตัวเองว่า "ทำไมผู้เขียนพูดถึงสิ่งนี้" ส่วนใหญ่คือยกตัวอย่างสนับสนุนประเด็นก่อนหน้า และดูว่าแต่ละย่อหน้าแบ่งตามอะไร' },
+  },
+  map: {
+    listening: ['L_suggest', 'L_future', 'L_imply', 'L_idiom', 'L_imply', 'L_imply', 'L_suggest', 'L_idiom', 'L_idiom', 'L_future',
+      'L_main', 'L_detail', 'L_detail', 'L_detail', 'L_main', 'L_detail', 'L_detail', 'L_detail'],
+    structure: ['G_verb', 'G_sentence', 'G_sentence', 'G_verb', 'G_connector', 'G_sentence', 'G_sentence', 'G_parallel', 'G_sentence', 'G_verb',
+      'G_noun', 'G_parallel', 'G_connector', 'G_noun', 'G_parallel', 'G_connector', 'G_noun', 'G_noun', 'G_noun', 'G_parallel'],
+    reading: ['R_main', 'R_fact', 'R_ref', 'R_infer', 'R_ref', 'R_vocab', 'R_fact', 'R_fact', 'R_fact', 'R_fact', 'R_org',
+      'R_main', 'R_ref', 'R_fact', 'R_fact', 'R_infer', 'R_vocab', 'R_ref', 'R_org', 'R_fact', 'R_infer'],
+  },
+};

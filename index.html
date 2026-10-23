@@ -14,7 +14,7 @@
     try { const t = JSON.parse(localStorage.getItem('toefl-itp-cmmu:theme')); if (t) document.documentElement.dataset.theme = t; } catch (e) { /* storage unavailable */ }
   </script>
   <!-- Bump ?v= on every release so browsers fetch the new files instead of a cached copy. -->
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <main id="app" aria-live="polite"></main>
@@ -29,8 +29,9 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script src="data.js?v=5"></script>
-  <script src="guide.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="data.js?v=6"></script>
+  <script src="guide.js?v=6"></script>
+  <script src="analysis.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
